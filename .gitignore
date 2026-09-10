@@ -1,0 +1,41 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# Environment
+.env
+*.env
+
+# Data files (large; not pushed to git)
+dataset/
+data/faiss_index.bin
+data/faiss_meta.pkl
+
+# Keep these generated files
+!data/golden_eval.csv
+!data/conversations.csv
+
+# Jupyter
+.ipynb_checkpoints/
+*.ipynb_checkpoints
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+
+# Model cache
+~/.cache/torch/
+~/.cache/huggingface/
+
+# Outputs
+outputs/*.json
+outputs/*.csv
