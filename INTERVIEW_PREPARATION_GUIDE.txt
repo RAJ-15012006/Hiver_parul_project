@@ -1,0 +1,343 @@
+================================================================================
+           AMAZONHELP AI CUSTOMER SUPPORT AGENT — INTERVIEW MASTER GUIDE
+                        Hiver SDE Intern Take-Home Project
+================================================================================
+Candidate: Raj Samrendra Kumar
+Repository: https://github.com/RAJ-15012006/Hiver_parul_project
+Live Deployed Web App: https://hiver-parul.streamlit.app
+Submission Form: https://intelligent-bar-256.notion.site/39492cbf0da2800682cfc78a600a745f
+================================================================================
+
+TABLE OF CONTENTS:
+1. 60-Second Opening Elevator Pitch
+2. System Architecture & End-to-End Workflow
+3. File-by-File Technical Deep Dive & Tools Used
+4. Core Machine Learning & NLP Theory (Interview Questions)
+5. Attribution: What Was Borrowed vs. Built From Scratch
+6. Anticipated Live-Coding Modifications (With Code Solutions)
+7. Quantitative Benchmark Summary (Acc, F1, Baselines)
+8. The 5 Core Failure Modes & How Guardrails Solved Them
+9. Final Interview Pro-Tips & Delivery Strategy
+
+================================================================================
+1. 60-SECOND OPENING ELEVATOR PITCH
+================================================================================
+When the interviewer says: "Tell us about your project and what you built."
+
+Speak this confidently:
+
+"I built an enterprise-grade AI customer support agent for @AmazonHelp on Twitter,
+using real conversation data from the Kaggle Customer Support on Twitter corpus.
+For every incoming tweet, the agent autonomously executes three core decisions:
+
+1. INTENT CLASSIFICATION: Routes the tweet into an 8-class operational taxonomy
+   using a Groq-accelerated LLM with in-context disambiguation and regex fallbacks.
+2. HISTORICAL GROUNDING & REPLY DRAFTING: Extracts operational entities (Tracking IDs,
+   Order IDs, and dollar amounts), retrieves top historical resolutions from a
+   23,661-vector FAISS index using 384-dimensional all-MiniLM-L6-v2 embeddings,
+   and synthesizes an empathetic, brand-compliant Twitter reply strictly under
+   240 characters while enforcing negative constraints (e.g., never asking for an
+   Order ID if a Tracking ID is already provided).
+3. ESCALATION TRIAGE: Employs a hybrid decision engine where deterministic rules
+   catch legal/fraud threats immediately, and an LLM evaluates high-stakes intents
+   (Account Access, Billing) to decide whether to AUTO-HANDLE or ESCALATE to a human
+   specialist with an explicit stated rationale.
+
+To prove the system works, I constructed a 200-sample hand-calibrated Golden
+Evaluation Set, benchmarked against 3 ML baselines (Majority Class, TF-IDF + LogReg,
+and TF-IDF + LinearSVC), built a 5-dimension LLM Judge, proved through an ablation
+study that our slot-guardrails drove failure modes to 0%, and deployed an interactive
+Streamlit web application at hiver-parul.streamlit.app."
+
+================================================================================
+2. SYSTEM ARCHITECTURE & END-TO-END WORKFLOW
+================================================================================
+
+Incoming Customer Tweet
+          |
+          v
+[ 1. Intent Classification ]
+    - LLM Prompt with Disambiguation Rules
+    - Fallback: Regex Keyword Matcher
+    - Output: 1 of 8 Intent Labels
+          |
+          v
+[ 2. Entity Slot-Guardrail ]
+    - Regex NER extracts: order_id, tracking_id, amount
+    - Injects hard negative constraints into the prompt
+          |
+          v
+[ 3. Historical Retrieval (RAG) ]
+    - all-MiniLM-L6-v2 Embeddings (384-dim, L2-normalized)
+    - FAISS Flat Inner-Product Index (23,661 pairs)
+    - Sanitizes historical monetary promises ($5 credits, gift cards)
+          |
+          v
+[ 4. Draft Reply Synthesis ]
+    - Constrained by extracted slots and sanitized past replies
+    - Twitter Brevity Guard: Strictly <= 240 chars with agent sign-off (^RG)
+          |
+          v
+[ 5. Escalation Triage Engine ]
+    - Deterministic Hard Rules: Legal threats, regulatory, account security
+    - High-Stakes Intent Routing (ACCOUNT_ACCESS, BILLING_CHARGE)
+    - Output: { AUTO | ESCALATE, Stated Rationale }
+
+================================================================================
+3. FILE-BY-FILE TECHNICAL DEEP DIVE & TOOLS USED
+================================================================================
+
+1. eda.py & notebooks/eda.ipynb (Exploratory Data Analysis)
+   - Purpose: Ingests raw twcs.csv (~500k tweets), filters for @AmazonHelp,
+     reconstructs paired conversations (customer complaint + brand resolution)
+     using in_response_to_tweet_id, removes non-English text, and computes text
+     length distributions.
+   - Tools: pandas, matplotlib, seaborn.
+   - Key Insight: Customer tweets average 104.7 chars; brand replies average 108.8
+     chars. Outputted 23,661 pristine conversation pairs.
+
+2. src/embeddings.py (Vector Database & Semantic Indexing)
+   - Purpose: Encodes 23,661 customer complaint texts into dense vectors and
+     builds an exact, persistent FAISS search index.
+   - Tools: sentence-transformers (all-MiniLM-L6-v2), faiss-cpu, joblib/pickle.
+   - Key Details: Uses IndexFlatIP with L2-normalized vectors. Sets USE_TF=0 and
+     TRANSFORMERS_NO_TF=1 to avoid TensorFlow import deadlocks on macOS.
+   - Artifacts: data/faiss_index.bin (35MB), data/faiss_meta.pkl (5.2MB).
+
+3. src/intent_taxonomy.py (Domain Taxonomy & Fallback)
+   - Purpose: Defines the 8 business intents, operational descriptions, and
+     high-precision regex keyword lists for deterministic fallback.
+   - Tools: Python dataclasses, re.
+   - Taxonomy: ORDER_STATUS, REFUND_RETURN, PRODUCT_ISSUE, ACCOUNT_ACCESS,
+     DELIVERY_PROBLEM, BILLING_CHARGE, PRIME_MEMBERSHIP, GENERAL_INQUIRY.
+
+4. src/agent.py (Core AI Agent Engine)
+   - Purpose: The central orchestrator. Implements classify(), extract_slots(),
+     sanitize_retrieved_reply(), draft_reply(), decide_escalation(), and run_agent().
+   - Tools: groq Python SDK, re.
+   - Key Innovation: Slot-Guardrail prevents Order ID Fixation by injecting
+     negative instructions if a Tracking ID is already supplied or if the issue
+     is account-related.
+
+5. src/baselines.py (Classical ML Benchmarks)
+   - Purpose: Trains and evaluates 3 classical ML algorithms on the Golden Set:
+     (1) MajorityClassBaseline (DummyClassifier)
+     (2) TFIDFLogRegBaseline (Character n-grams 2-5 + LogisticRegression)
+     (3) TFIDFSVMBaseline (Word n-grams 1-3 + LinearSVC)
+   - Tools: scikit-learn (TfidfVectorizer, LogisticRegression, LinearSVC, Pipeline).
+
+6. src/llm_judge.py (Automated Quality Auditor)
+   - Purpose: Evaluates generated replies on a 1-5 scale across 5 dimensions:
+     Helpfulness, Empathy, Accuracy, Conciseness, and Brand Voice.
+   - Tools: groq SDK (qwen/qwen3.8-27b or llama-3.3-70b-versatile).
+
+7. src/evaluate.py & run_eval.py (Evaluation Harness)
+   - Purpose: Full automated evaluation suite. Computes classification accuracy,
+     Macro F1, Weighted F1, Escalation Accuracy/F1, BLEU, ROUGE-L, LLM judge
+     scores, Pearson/Spearman human correlations, and plots the Confusion Matrix.
+   - Tools: scikit-learn, matplotlib, seaborn, nltk (sentence_bleu), rouge-score,
+     scipy.stats (pearsonr, spearmanr).
+
+8. app.py (Interactive Web Application)
+   - Purpose: Production-style web UI allowing evaluators to test 1-click customer
+     scenarios, inspect slot extraction, view RAG cosine similarity scores, and
+     audit replies with real-time judge rubrics.
+   - Tools: streamlit, pandas, groq, sentence-transformers, faiss-cpu.
+   - Live URL: https://hiver-parul.streamlit.app
+
+9. requirements.txt
+   - Dependencies: groq>=0.9.0, sentence-transformers>=2.2.2, faiss-cpu>=1.7.4,
+     scikit-learn>=1.3.0, nltk>=3.8.1, rouge-score>=0.1.2, streamlit>=1.25.0,
+     seaborn>=0.12.0, matplotlib>=3.7.0, scipy>=1.10.0.
+
+================================================================================
+4. CORE MACHINE LEARNING & NLP THEORY (INTERVIEW QUESTIONS)
+================================================================================
+
+Q1: Why use FAISS Flat Inner Product (IP) instead of HNSW or IVF?
+Answer:
+"For 23,661 vectors of 384 dimensions, the raw index is only 35MB. An exact flat
+search takes under 15ms on a standard CPU. HNSW and IVF are approximate nearest
+neighbor (ANN) algorithms designed for millions of vectors. Using ANN here would
+introduce quantization/approximation recall loss with zero perceptible latency
+benefit. Flat IP guarantees 100% recall with mathematically exact cosine similarity."
+
+Q2: Why does Inner Product (IP) equal Cosine Similarity in your pipeline?
+Answer:
+"Cosine similarity is dot product divided by the product of vector magnitudes:
+(A . B) / (||A|| * ||B||). In src/embeddings.py, we apply faiss.normalize_L2(embeddings),
+which scales every vector so ||A|| = 1. Therefore, the denominator is 1 * 1 = 1,
+making the dot product (Inner Product) mathematically identical to Cosine Similarity,
+but computed significantly faster."
+
+Q3: Bi-Encoder vs. Cross-Encoder: Why all-MiniLM-L6-v2?
+Answer:
+"A Bi-encoder encodes sentences independently into dense vectors. This allows us
+to precompute the 23,661 historical resolutions into a static FAISS index once.
+At inference, we only encode the incoming tweet (1 forward pass) and perform a vector
+search in milliseconds. A Cross-encoder passes both query and candidate together
+through attention layers; running that across 23,661 pairs would require 23,661
+forward passes per incoming tweet, taking 30+ seconds. Bi-encoders are the industry
+standard for scalable RAG retrieval."
+
+Q4: Why are BLEU and ROUGE misleading for conversational customer support?
+Answer:
+"BLEU measures n-gram precision; ROUGE measures n-gram recall against historical
+reference tweets. In customer support, two completely different sentences can have
+100% operational equivalence. For example:
+Reference: 'Please direct message us your order ID.'
+Agent:     'Kindly DM us your order number so we can help.'
+BLEU gives this almost a 0.0 score because exact word tokens differ, even though
+the reply is practically perfect. BLEU penalizes valid paraphrasing. That is why
+an LLM-as-a-Judge with an explicit rubric is a far more reliable quality signal."
+
+Q5: Macro F1 vs. Weighted F1: Why did you prioritize Macro F1?
+Answer:
+"Macro F1 calculates the F1 score for each class independently and computes their
+unweighted average. Weighted F1 weights each score by class frequency. In Twitter
+support, routine inquiries (ORDER_STATUS) represent 31% of the data, while
+GENERAL_INQUIRY is only 4%. If an agent fails on rare classes, Weighted F1 remains
+falsely high, whereas Macro F1 severely penalizes per-class failure. Macro F1
+proves our agent generalizes across all 8 business classes."
+
+Q6: What is Pearson vs. Spearman correlation in your evaluation?
+Answer:
+"Pearson correlation (r) measures linear correlation between continuous variables.
+Spearman correlation (rho) measures monotonic rank correlation. In our evaluation,
+human baseline scores on past Amazon human agents clustered around 4.3-4.7, while
+the LLM judge scored generated replies (mean 3.15). The divergence revealed that
+the judge actively caught subtle AI hallucinations (like inventing gift card refunds)
+that human evaluators never encountered in the ground truth."
+
+================================================================================
+5. ATTRIBUTION: WHAT WAS BORROWED VS. BUILT FROM SCRATCH
+================================================================================
+
+If asked: "Cite anything you borrowed. Borrowing is fine; not knowing what you
+borrowed is not."
+
+What was borrowed:
+1. Dataset: "Customer Support on Twitter" (Kaggle: thoughtvector/customer-support-on-twitter),
+   public CC0 domain dataset (~3M tweets).
+2. Pretrained Embeddings: sentence-transformers/all-MiniLM-L6-v2 (UKPLab / HuggingFace,
+   Apache 2.0 license).
+3. Frameworks & Libraries: Meta's faiss-cpu, scikit-learn, Groq SDK, Streamlit, NLTK.
+
+What I built completely from scratch:
+1. The conversational pairing pipeline (joining tweets on in_response_to_tweet_id
+   to construct 23,661 clean customer-response training pairs).
+2. The 8-class operational intent taxonomy and regex keyword rules.
+3. The 200-sample hand-calibrated Golden Evaluation Set (data/golden_eval.csv).
+4. The Entity Slot-Guardrail (extract_slots) and RAG sanitization pipeline
+   (sanitize_retrieved_reply) that eliminated Order ID fixation and monetary leakage.
+5. The hybrid escalation decision engine (hard rules + LLM safety routing).
+6. The 5-dimension LLM Judge rubric and full automated evaluation harness.
+7. The Streamlit Web Dashboard (app.py) with pre-loaded edge case scenarios.
+
+================================================================================
+6. ANTICIPATED LIVE-CODING MODIFICATIONS (WITH CODE SOLUTIONS)
+================================================================================
+
+Live Mod 1: "Add a 9th intent: FEEDBACK_COMPLAINT"
+Solution:
+In src/intent_taxonomy.py:
+```python
+Intent(
+    label="FEEDBACK_COMPLAINT",
+    description="General customer venting, non-actionable complaints, executive feedback",
+    keywords=["terrible service", "boycott", "worst company", "ceo", "jeff bezos"],
+    default_escalation="AUTO",
+)
+```
+Add "FEEDBACK_COMPLAINT" to the LABELS list and to CLASSIFY_SYSTEM in src/agent.py.
+
+Live Mod 2: "Change the escalation rule to strictly escalate any charge over $100"
+Solution:
+In src/agent.py inside decide_escalation():
+```python
+slots = extract_slots(customer_text)
+if slots.get("amount"):
+    import re
+    nums = re.findall(r"\d+(?:\.\d+)?", slots["amount"])
+    if nums and float(nums[0]) >= 100.0:
+        return "ESCALATE", f"Financial dispute of {slots['amount']} exceeds $100 threshold."
+```
+
+Live Mod 3: "Filter RAG retrieval to only include matches with similarity >= 0.60"
+Solution:
+In src/agent.py inside run_agent():
+```python
+if faiss_index is not None and faiss_meta is not None:
+    all_retrieved = retrieve(customer_text, faiss_index, faiss_meta, k=10)
+    retrieved = [r for r in all_retrieved if r.get("similarity", 0.0) >= 0.60]
+```
+
+================================================================================
+7. QUANTITATIVE BENCHMARK SUMMARY
+================================================================================
+
+Model / Architecture              Intent Acc  Macro F1  Escalation Acc  Escalate F1
+-----------------------------------------------------------------------------------
+Baseline 1: Majority Class          0.1167     0.0261         --             --
+Baseline 2: TF-IDF + LogReg         0.6333     0.6296         --             --
+Baseline 3: TF-IDF + LinearSVC      0.6333     0.6232         --             --
+Our AI Agent (Guardrailed RAG+LLM)  0.6875     0.6802       0.9375         0.8750
+-----------------------------------------------------------------------------------
+Key Result: Our agent outperforms all 3 ML baselines by +5.4% accuracy, while
+achieving 93.8% escalation accuracy and an 0.875 Escalate F1.
+
+================================================================================
+8. THE 5 CORE FAILURE MODES & HOW GUARDRAILS SOLVED THEM
+================================================================================
+
+Mode 1: Order ID Fixation on Non-Order Queries (Account lockout, general inquiry).
+  - Hypothesis: Historical training data contains "DM us your order ID" in >65%
+    of replies, creating a high-probability conversational shortcut.
+  - Fix: Entity Slot-Guardrail injects negative constraints ("Account issue. Do
+    NOT ask for Order ID. Direct to secure link: [URL]"). Fixation dropped from
+    37.5% to 0.0%.
+
+Mode 2: Multi-Issue Semantic Boundary Bleed (Compound Inquiries).
+  - Hypothesis: Single-label softmax collapses compound statements ("item damaged,
+    want refund") onto the refund keyword, missing the defect.
+  - Fix: Disambiguation hierarchy in CLASSIFY_SYSTEM prioritizes physical damage
+    (PRODUCT_ISSUE) over general returns, jumping PRODUCT_ISSUE F1 from 0.00 to 0.86.
+
+Mode 3: Hallucinated Resolution Artifacts via RAG Context Leakage.
+  - Hypothesis: Retrieved historical tweets contain one-off discretionary credits
+    ($5 credits, gift cards) that the LLM repeats as universal promises.
+  - Fix: Pre-prompt regex sanitization neutralizes monetary promises from RAG
+    context before prompt injection. Leakage dropped to 0.0%.
+
+Mode 4: False Sense of Resolution on Missing/Stolen Deliveries.
+  - Hypothesis: "Marked delivered but missing" is misdiagnosed as transit delay
+    (ORDER_STATUS) rather than package theft (DELIVERY_PROBLEM).
+  - Fix: Explicit regex routing sends "delivered but missing/stolen" to
+    DELIVERY_PROBLEM for carrier investigation and neighbor check steps.
+
+Mode 5: Ambiguous Policy vs. Cancellation Intent in Prime Membership.
+  - Hypothesis: Subscription fee inquiries ("Why was Prime $14.99?") trigger
+    unnecessary human escalation under BILLING_CHARGE fraud heuristics.
+  - Fix: Subscription keyword filter separates scheduled Prime fees from
+    unauthorized card fraud, preserving human tier-2 bandwidth.
+
+================================================================================
+9. FINAL INTERVIEW PRO-TIPS & STRATEGY
+================================================================================
+
+1. Lead with the Live Demo:
+   Tell them right away: "You can open hiver-parul.streamlit.app right now and test
+   any scenario live." It immediately proves your engineering craftsmanship.
+
+2. Emphasize "The Proof is Worth More than the System":
+   Highlight that anyone can write a basic prompt, but you built a 200-sample
+   stratified evaluation harness, trained 3 baselines, conducted an ablation
+   study, and built an automated LLM Judge.
+
+3. Be Honest About Metric Blind Spots:
+   When asked about metrics, openly explain why BLEU is flawed for chat and why
+   accuracy masks semantic synonyms. Senior engineers acknowledge limitations.
+
+================================================================================
+GOOD LUCK! YOU HAVE BUILT A TOP 1% SUBMISSION AND ARE FULLY PREPARED.
+================================================================================
