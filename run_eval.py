@@ -106,6 +106,33 @@ def run_eval():
     weighted_f1 = f1_score(y_true, y_pred, average="weighted", zero_division=0)
     clf_report = classification_report(y_true, y_pred, labels=LABELS, zero_division=0)
 
+    # ── Confusion Matrix Heatmap ──────────────────────────────────────────────
+    try:
+        from sklearn.metrics import confusion_matrix
+        import matplotlib
+        matplotlib.use("Agg")
+        import matplotlib.pyplot as plt
+        import seaborn as sns
+
+        cm = confusion_matrix(y_true, y_pred, labels=LABELS)
+        plt.figure(figsize=(9, 7))
+        sns.heatmap(
+            cm, annot=True, fmt="d", cmap="Blues",
+            xticklabels=[l.replace("_", "\n") for l in LABELS],
+            yticklabels=LABELS,
+            cbar=True,
+        )
+        plt.title("Confusion Matrix — AmazonHelp Intent Classification", fontsize=13, pad=12)
+        plt.xlabel("Predicted Intent", fontsize=11)
+        plt.ylabel("True Intent (Golden Set)", fontsize=11)
+        plt.tight_layout()
+        cm_path = OUTPUTS_DIR / "confusion_matrix.png"
+        plt.savefig(cm_path, dpi=200)
+        plt.close()
+        logger.info(f"Confusion matrix plot saved → {cm_path}")
+    except Exception as e:
+        logger.warning(f"Could not generate confusion matrix plot: {e}")
+
     logger.info(f"Agent  →  accuracy={acc:.3f}  macro_F1={macro_f1:.3f}  weighted_F1={weighted_f1:.3f}")
 
     # ── Escalation metrics ─────────────────────────────────────────────────────

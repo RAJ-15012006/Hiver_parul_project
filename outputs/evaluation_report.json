@@ -3,23 +3,23 @@
   "n_golden": 200,
   "agent": {
     "classification": {
-      "accuracy": 0.5938,
-      "macro_f1": 0.5569,
-      "weighted_f1": 0.5569,
-      "per_class_report": "                  precision    recall  f1-score   support\n\n    ORDER_STATUS       0.75      0.75      0.75         4\n   REFUND_RETURN       0.38      0.75      0.50         4\n   PRODUCT_ISSUE       0.00      0.00      0.00         4\n  ACCOUNT_ACCESS       0.80      1.00      0.89         4\nDELIVERY_PROBLEM       0.38      0.75      0.50         4\n  BILLING_CHARGE       0.75      0.75      0.75         4\nPRIME_MEMBERSHIP       1.00      0.50      0.67         4\n GENERAL_INQUIRY       1.00      0.25      0.40         4\n\n        accuracy                           0.59        32\n       macro avg       0.63      0.59      0.56        32\n    weighted avg       0.63      0.59      0.56        32\n"
+      "accuracy": 0.6875,
+      "macro_f1": 0.6802,
+      "weighted_f1": 0.6802,
+      "per_class_report": "                  precision    recall  f1-score   support\n\n    ORDER_STATUS       0.60      0.75      0.67         4\n   REFUND_RETURN       0.50      0.75      0.60         4\n   PRODUCT_ISSUE       1.00      0.75      0.86         4\n  ACCOUNT_ACCESS       0.80      1.00      0.89         4\nDELIVERY_PROBLEM       0.60      0.75      0.67         4\n  BILLING_CHARGE       1.00      0.75      0.86         4\nPRIME_MEMBERSHIP       0.67      0.50      0.57         4\n GENERAL_INQUIRY       0.50      0.25      0.33         4\n\n        accuracy                           0.69        32\n       macro avg       0.71      0.69      0.68        32\n    weighted avg       0.71      0.69      0.68        32\n"
     },
     "escalation": {
-      "accuracy": 0.9062,
-      "escalate_f1": 0.8235
+      "accuracy": 0.9375,
+      "escalate_f1": 0.875
     },
     "reply_quality": {
-      "bleu_mean": 0.0464,
-      "rouge_l_mean": 0.2497
+      "bleu_mean": 0.0295,
+      "rouge_l_mean": 0.2354
     },
-    "llm_judge_mean": 3.175,
-    "llm_judge_human_pearson_r": -0.055,
-    "llm_judge_human_spearman_r": -0.026,
-    "llm_judge_human_mae": 1.131
+    "llm_judge_mean": 3.15,
+    "llm_judge_human_pearson_r": -0.522,
+    "llm_judge_human_spearman_r": -0.512,
+    "llm_judge_human_mae": 1.294
   },
   "baselines": {
     "majority_class": {

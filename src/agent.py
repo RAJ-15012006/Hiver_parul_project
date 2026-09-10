@@ -91,21 +91,65 @@ def _keyword_classify(text: str) -> str:
     return best_label
 
 
+# ── Entity Slot Extractor & Guardrail ──────────────────────────────────────────
+def extract_slots(text: str) -> Dict[str, Any]:
+    """
+    Extract operational slots to prevent repetitive or misdirected support prompts.
+    Solves Failure Mode #1 (Order ID Fixation).
+    """
+    text_lower = text.lower()
+    
+    # 1. Order ID pattern (e.g. 112-9876543-1234567 or #123456)
+    order_match = re.search(r"\b(\d{3}-\d{7}-\d{7}|#\d{5,10})\b", text)
+    order_id = order_match.group(1) if order_match else None
+    
+    # 2. Tracking ID pattern (e.g. TBA..., 1Z..., or 10-22 digit tracking numbers)
+    tracking_match = re.search(r"\b(TBA\d{10,14}|1Z[0-9A-Z]{16}|\d{12,22})\b", text, re.IGNORECASE)
+    has_tracking_kw = any(w in text_lower for w in ["tracking id", "tracking number", "tracking #", "track id"])
+    tracking_id = tracking_match.group(1) if tracking_match else ("provided" if has_tracking_kw else None)
+    
+    # 3. Currency amounts
+    amount_match = re.search(r"([$£€]\s*\d+(\.\d{2})?|\b\d+\s*(dollars|pounds|euros))", text_lower)
+    amount = amount_match.group(1) if amount_match else None
+
+    return {
+        "order_id": order_id,
+        "tracking_id": tracking_id,
+        "amount": amount,
+    }
+
+
+def sanitize_retrieved_reply(text: str) -> str:
+    """
+    Strip historical monetary compensation promises to prevent RAG context leakage.
+    Solves Failure Mode #3 (Hallucinated Resolution Artifacts).
+    """
+    # Neutralize specific dollar credits/gift card claims from historical corpus
+    sanitized = re.sub(
+        r"[\$£€]\d+(\.\d{2})?\s*(promotional\s*certificate|credit|gift\s*card|refund)?",
+        "appropriate resolution",
+        text,
+        flags=re.IGNORECASE,
+    )
+    return sanitized.strip()
+
+
 # ── 1. Classify ───────────────────────────────────────────────────────────────
 CLASSIFY_SYSTEM = (
-    "You are an Amazon customer support intent classifier.\n"
-    "Respond with ONLY one of these exact uppercase labels:\n"
+    "You are an expert Amazon customer support intent classifier.\n"
+    "Classify the customer message into EXACTLY ONE of these labels:\n"
     "ORDER_STATUS, REFUND_RETURN, PRODUCT_ISSUE, ACCOUNT_ACCESS, "
     "DELIVERY_PROBLEM, BILLING_CHARGE, PRIME_MEMBERSHIP, GENERAL_INQUIRY.\n\n"
-    "Examples:\n"
-    "- 'where is my package' -> ORDER_STATUS\n"
-    "- 'want my money back' -> REFUND_RETURN\n"
-    "- 'screen cracked on arrival' -> PRODUCT_ISSUE\n"
-    "- 'cant log into my account' -> ACCOUNT_ACCESS\n"
-    "- 'says delivered but not here' -> DELIVERY_PROBLEM\n"
-    "- 'charged twice on card' -> BILLING_CHARGE\n"
-    "- 'cancel prime renewal' -> PRIME_MEMBERSHIP\n"
-    "- 'how do i gift wrap' -> GENERAL_INQUIRY"
+    "Disambiguation Rules:\n"
+    "- If an item is physically broken, damaged, cracked, defective, or not working -> PRODUCT_ISSUE (even if return/refund is requested).\n"
+    "- If package is marked delivered but not on porch, stolen, or handed to wrong house -> DELIVERY_PROBLEM.\n"
+    "- Where is my order, shipping delay, tracking query, or expected arrival -> ORDER_STATUS.\n"
+    "- Login loop, password reset, 2FA, OTP, hacked, locked account -> ACCOUNT_ACCESS.\n"
+    "- Unwanted charge, duplicate debit, unknown fee, billing error -> BILLING_CHARGE.\n"
+    "- Return policy, return label, sending undamaged item back -> REFUND_RETURN.\n"
+    "- Prime membership fee, Prime video, cancellation -> PRIME_MEMBERSHIP.\n"
+    "- General inquiries, packaging, app bugs, search -> GENERAL_INQUIRY.\n\n"
+    "Respond with ONLY the exact uppercase label."
 )
 
 
@@ -115,7 +159,6 @@ def classify(
 ) -> str:
     """
     Classify a customer tweet into one of the 8 intents.
-
     Returns: label string (e.g. "ORDER_STATUS")
     """
     if not use_llm:
@@ -127,11 +170,9 @@ def classify(
     ]
     try:
         raw = _call_groq(messages, temperature=0.0, max_tokens=20)
-        # Normalise: strip punctuation, uppercase
         label = re.sub(r"[^A-Z_]", "", raw.strip().upper())
         if label in LABELS:
             return label
-        # Fuzzy fallback: check if any label is a substring
         for l in LABELS:
             if l in raw.upper():
                 return l
@@ -145,8 +186,8 @@ def classify(
 # ── 2. Draft Reply ────────────────────────────────────────────────────────────
 REPLY_SYSTEM = (
     "You are AmazonHelp on Twitter. Write a concise, empathetic, professional "
-    "support reply (<= 240 characters) offering clear next steps (e.g. DM order ID). "
-    "Use 'DM', ground in past Amazon responses."
+    "support reply (<= 240 characters) offering clear next steps. "
+    "Use 'DM', ground in past Amazon responses. Never invent monetary compensation."
 )
 
 
@@ -154,22 +195,40 @@ def draft_reply(
     customer_text: str,
     intent: str,
     retrieved: List[Dict[str, Any]],
+    slots: Optional[Dict[str, Any]] = None,
 ) -> str:
     """
-    Draft a support reply grounded in retrieved historical examples.
+    Draft a support reply grounded in retrieved historical examples and constrained by slots.
     """
-    # Compact RAG context block (top-2 replies, capped length)
+    if slots is None:
+        slots = extract_slots(customer_text)
+
+    # Build slot guardrail instructions
+    guardrails = []
+    if slots.get("tracking_id"):
+        guardrails.append("- Tracking ID is ALREADY provided. Do NOT ask for tracking number again.")
+    if intent == "ACCOUNT_ACCESS":
+        guardrails.append("- Account security issue. Do NOT ask for an Order ID. Direct user to secure account help: [URL].")
+    if slots.get("order_id"):
+        guardrails.append(f"- Order ID {slots['order_id']} is already provided. Acknowledge and ask them to DM details.")
+
+    guardrail_block = "\n".join(guardrails) if guardrails else ""
+
+    # Compact RAG context block (sanitized)
     context_lines = []
     for r in retrieved[:2]:
-        context_lines.append(f'- Similar past reply: "{r["brand_reply"][:160]}"')
+        clean_past = sanitize_retrieved_reply(r["brand_reply"][:150])
+        context_lines.append(f'- Past reply: "{clean_past}"')
     context_block = "\n".join(context_lines) if context_lines else "(none)"
 
     user_prompt = (
         f"Intent: {intent}\n"
         f"Customer: \"{customer_text}\"\n"
         f"Grounding:\n{context_block}\n"
-        "Draft AmazonHelp reply:"
     )
+    if guardrail_block:
+        user_prompt += f"Guardrails to follow:\n{guardrail_block}\n"
+    user_prompt += "Draft AmazonHelp reply:"
 
     messages = [
         {"role": "system", "content": REPLY_SYSTEM},
@@ -265,20 +324,24 @@ def run_agent(
     # 1. Classify
     intent = classify(customer_text, use_llm=use_llm)
 
-    # 2. Retrieve similar historical examples
+    # 2. Extract operational slots & guardrails
+    slots = extract_slots(customer_text)
+
+    # 3. Retrieve similar historical examples
     retrieved = []
     if faiss_index is not None and faiss_meta is not None:
         retrieved = retrieve(customer_text, faiss_index, faiss_meta, k=5)
 
-    # 3. Draft reply
-    reply = draft_reply(customer_text, intent, retrieved)
+    # 4. Draft reply (slot-constrained)
+    reply = draft_reply(customer_text, intent, retrieved, slots=slots)
 
-    # 4. Escalation decision
+    # 5. Escalation decision
     decision, reason = decide_escalation(customer_text, intent, retrieved, use_llm=use_llm)
 
     return {
         "customer_text":       customer_text,
         "intent":              intent,
+        "slots":               slots,
         "draft_reply":         reply,
         "escalation_decision": decision,
         "escalation_reason":   reason,

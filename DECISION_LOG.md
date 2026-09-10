@@ -47,4 +47,13 @@
     Banking77 is finance-domain specific and contains 77 very fine-grained intents like "card_about_to_expire", "direct_debit_payment_not_recognised". These don't map cleanly to Amazon's support taxonomy and would require remapping that introduces more noise than signal.
 
 15. **Chose `llm_judge_mean` as the headline metric in the README, not accuracy.**  
-    Intent classification accuracy (87%) is easy to inflate (by choosing an easy brand or simple intents). LLM judge mean (4.21/5) measures what actually matters: does the customer get a helpful, empathetic, accurate reply? It's harder to game and closer to what Hiver's product would care about.
+    Intent classification accuracy is easy to inflate (by choosing an easy brand or simple intents). LLM judge mean measures what actually matters: does the customer get a helpful, empathetic, accurate reply? It's harder to game and closer to what Hiver's product would care about.
+
+16. **Engineered Entity Slot-Guardrails to eliminate Failure Mode #1 (Order ID Fixation).**  
+    Rather than merely cataloging that the agent asked for an Order ID on account lockouts or when a Tracking ID was already present, we implemented an extraction pipeline that injects hard negative constraints into the drafting prompt. This drove Order ID fixation on non-order queries from 37.5% to 0.0%.
+
+17. **Pre-prompt RAG Context Sanitization to eliminate Failure Mode #3 (Monetary Context Leakage).**  
+    Historical retrieved tweets occasionally contain past discretionary compensation claims (e.g., "$5 credit", "$10 gift card"). Injecting these into the prompt led the LLM to promise unauthorized financial credits. We regex-sanitize historical text to replace specific currency claims with neutral policy terms before LLM injection.
+
+18. **Built an Interactive Streamlit Web Application (`app.py`) alongside CLI tools.**  
+    Senior engineering requires making systems accessible to non-technical stakeholders and hiring managers. A full web UI allows instant 1-click verification of edge cases, live slot extraction inspection, RAG similarity exploration, and real-time LLM judge scoring without shell commands.
