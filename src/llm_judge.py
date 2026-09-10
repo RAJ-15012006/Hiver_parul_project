@@ -27,7 +27,7 @@ import os
 load_dotenv()
 logger = logging.getLogger(__name__)
 
-JUDGE_MODEL = "llama-3.3-70b-versatile"
+JUDGE_MODEL = "qwen/qwen3.8-27b"
 
 JUDGE_SYSTEM = """\
 You are an expert evaluator of customer support reply quality for Amazon Twitter support.

@@ -7,6 +7,9 @@ brand_reply) pairs to ground reply generation.
 """
 
 import os
+os.environ["USE_TF"] = "0"
+os.environ["TRANSFORMERS_NO_TF"] = "1"
+os.environ["TOKENIZERS_PARALLELISM"] = "false"
 import pickle
 from pathlib import Path
 from typing import List, Tuple
@@ -116,6 +119,11 @@ def retrieve(
 
 
 if __name__ == "__main__":
-    from data_pipeline import run as build_conversations
-    convs = build_conversations()
+    convs_path = Path(__file__).parent.parent / "data" / "conversations.csv"
+    if convs_path.exists():
+        print(f"[embeddings] Loading existing {convs_path} ...")
+        convs = pd.read_csv(convs_path)
+    else:
+        from data_pipeline import run as build_conversations
+        convs = build_conversations()
     build_index(convs)

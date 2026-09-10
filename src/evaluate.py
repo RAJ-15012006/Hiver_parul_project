@@ -16,6 +16,9 @@ Outputs a JSON + Markdown report in outputs/evaluation_report.*
 import json
 import logging
 import os
+os.environ["USE_TF"] = "0"
+os.environ["TRANSFORMERS_NO_TF"] = "1"
+os.environ["TOKENIZERS_PARALLELISM"] = "false"
 import sys
 from pathlib import Path
 from typing import List, Dict, Any, Optional
@@ -141,12 +144,14 @@ def eval_escalation(
 def run_evaluation(
     golden_csv: Path = GOLDEN_CSV,
     use_llm: bool = True,
-    judge_sample: int = 50,
+    judge_sample: int = 25,
     run_baselines: bool = True,
+    eval_sample: Optional[int] = 50,
 ) -> Dict[str, Any]:
     """
     Full evaluation pipeline. Loads golden set, runs agent + baselines, scores all.
     """
+    import time
     from intent_taxonomy import LABELS
     from agent import run_agent, classify
     from embeddings import load_index
@@ -170,16 +175,28 @@ def run_evaluation(
         logger.warning("FAISS index not found — running without RAG.")
         faiss_index, faiss_meta = None, None
 
+    # Determine subset for evaluation if specified
+    if eval_sample is not None and eval_sample < len(golden):
+        per_class = max(2, eval_sample // len(LABELS))
+        eval_df = golden.groupby("intent", group_keys=False).apply(
+            lambda x: x.sample(n=min(len(x), per_class), random_state=42)
+        ).reset_index(drop=True)
+        logger.info(f"Evaluating agent on stratified sample of {len(eval_df)} rows...")
+    else:
+        eval_df = golden
+        logger.info(f"Evaluating agent on full set of {len(eval_df)} rows...")
+
     # ── Run agent on golden set ───────────────────────────────────────────────
     logger.info("Running agent on golden eval set …")
     agent_results = []
-    for _, row in golden.iterrows():
+    for _, row in eval_df.iterrows():
         result = run_agent(
             row["customer_text"],
             faiss_index=faiss_index,
             faiss_meta=faiss_meta,
             use_llm=use_llm,
         )
+        time.sleep(0.35)
         result["true_intent"] = row.get("intent", "")
         result["true_escalation"] = row.get("escalation", "AUTO")
         result["brand_reply"] = row.get("brand_reply", "")

@@ -73,7 +73,6 @@ class TFIDFLogRegBaseline:
                 C=C,
                 max_iter=1000,
                 solver="lbfgs",
-                multi_class="multinomial",
                 class_weight="balanced",
                 n_jobs=-1,
             )),

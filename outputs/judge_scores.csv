@@ -1,0 +1,9 @@
+helpfulness,empathy,accuracy,conciseness,brand_voice,overall,explanation
+2,4,3,5,5,3.8,"The reply is empathetic and on-brand but fails to address the specific technical issue of a password reset loop, instead requesting an order ID which is often irrelevant for account access problems."
+3,4,3,5,5,4.0,"The reply is empathetic and concise, but it incorrectly conflates dispatch status with billing issues and makes an unverified assumption about a 'temporary hold' without confirming the specific nature of the double debit."
+2,3,2,5,4,3.2,"The reply is unhelpful and inaccurate because it apologizes for a 'name typo' that was not mentioned in the customer's message, failing to address the core issue of the missing email."
+1,2,1,4,3,2.2,"The reply is completely irrelevant to the customer's question about casting to a Firestick, instead addressing a non-existent issue with a wrong color item."
+2,3,2,5,4,3.2,"The reply is concise and empathetic but fails to address the specific tracking concern or acknowledge the provided Tracking ID, instead asking for an Order ID which may not be necessary for a tracking lookup."
+2,3,2,5,4,3.2,"The reply fails to address the specific confusion regarding the 'two criteria' or the perceived partiality, instead using a generic template that misinterprets the issue as a delivery failure."
+2,4,1,5,4,3.2,The reply is empathetic and concise but fails on accuracy and helpfulness by hallucinating a 'gift card refund' for a physical product issue and ignoring the specific complaint about the stalled pickup.
+1,3,1,4,4,2.6,"The reply is completely irrelevant to the customer's issue regarding seller account registration and billing, incorrectly treating it as a standard product return refund."

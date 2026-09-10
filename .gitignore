@@ -36,6 +36,7 @@ Thumbs.db
 ~/.cache/torch/
 ~/.cache/huggingface/
 
-# Outputs
-outputs/*.json
-outputs/*.csv
+# Keep generated evaluation outputs
+!outputs/*.json
+!outputs/*.csv
+!outputs/*.png

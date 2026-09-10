@@ -13,6 +13,9 @@ Falls back to keyword heuristics for robustness if API fails.
 """
 
 import os
+os.environ["USE_TF"] = "0"
+os.environ["TRANSFORMERS_NO_TF"] = "1"
+os.environ["TOKENIZERS_PARALLELISM"] = "false"
 import re
 import json
 import time
@@ -52,7 +55,7 @@ def _get_client() -> Groq:
 
 def _call_groq(
     messages: List[Dict[str, str]],
-    model: str = "llama-3.3-70b-versatile",
+    model: str = "qwen/qwen3.8-27b",
     temperature: float = 0.2,
     max_tokens: int = 512,
     retries: int = 3,
@@ -90,11 +93,19 @@ def _keyword_classify(text: str) -> str:
 
 # ── 1. Classify ───────────────────────────────────────────────────────────────
 CLASSIFY_SYSTEM = (
-    "You are an expert customer-support intent classifier for Amazon. "
-    "You must respond with ONLY the intent label — no explanation, no punctuation.\n\n"
-    + label_description_block()
-    + "\n\n"
-    + few_shot_block(n_per_class=2)
+    "You are an Amazon customer support intent classifier.\n"
+    "Respond with ONLY one of these exact uppercase labels:\n"
+    "ORDER_STATUS, REFUND_RETURN, PRODUCT_ISSUE, ACCOUNT_ACCESS, "
+    "DELIVERY_PROBLEM, BILLING_CHARGE, PRIME_MEMBERSHIP, GENERAL_INQUIRY.\n\n"
+    "Examples:\n"
+    "- 'where is my package' -> ORDER_STATUS\n"
+    "- 'want my money back' -> REFUND_RETURN\n"
+    "- 'screen cracked on arrival' -> PRODUCT_ISSUE\n"
+    "- 'cant log into my account' -> ACCOUNT_ACCESS\n"
+    "- 'says delivered but not here' -> DELIVERY_PROBLEM\n"
+    "- 'charged twice on card' -> BILLING_CHARGE\n"
+    "- 'cancel prime renewal' -> PRIME_MEMBERSHIP\n"
+    "- 'how do i gift wrap' -> GENERAL_INQUIRY"
 )
 
 
@@ -132,17 +143,11 @@ def classify(
 
 
 # ── 2. Draft Reply ────────────────────────────────────────────────────────────
-REPLY_SYSTEM = """\
-You are AmazonHelp, Amazon's official customer support agent on Twitter.
-Your replies must be:
-- Empathetic and professional
-- Concise (≤ 280 characters when possible, but correctness > brevity)
-- Action-oriented: tell the customer exactly what to do next
-- Grounded in the historical examples provided
-
-Use "DM" instead of "Direct Message". Reference order numbers if mentioned.
-Do NOT use excessive exclamation marks or robotic filler phrases.
-"""
+REPLY_SYSTEM = (
+    "You are AmazonHelp on Twitter. Write a concise, empathetic, professional "
+    "support reply (<= 240 characters) offering clear next steps (e.g. DM order ID). "
+    "Use 'DM', ground in past Amazon responses."
+)
 
 
 def draft_reply(
@@ -153,20 +158,17 @@ def draft_reply(
     """
     Draft a support reply grounded in retrieved historical examples.
     """
-    # Build RAG context block
+    # Compact RAG context block (top-2 replies, capped length)
     context_lines = []
-    for r in retrieved[:4]:
-        context_lines.append(
-            f'  [Customer]: "{r["customer_text"]}"\n'
-            f'  [AmazonHelp reply]: "{r["brand_reply"]}"'
-        )
-    context_block = "\n---\n".join(context_lines) if context_lines else "(none)"
+    for r in retrieved[:2]:
+        context_lines.append(f'- Similar past reply: "{r["brand_reply"][:160]}"')
+    context_block = "\n".join(context_lines) if context_lines else "(none)"
 
     user_prompt = (
         f"Intent: {intent}\n"
-        f"Customer message: \"{customer_text}\"\n\n"
-        f"Historical AmazonHelp replies to similar issues:\n{context_block}\n\n"
-        "Please draft a single, concise reply from AmazonHelp."
+        f"Customer: \"{customer_text}\"\n"
+        f"Grounding:\n{context_block}\n"
+        "Draft AmazonHelp reply:"
     )
 
     messages = [
@@ -239,6 +241,9 @@ def decide_escalation(
                 return dec, reason
         except Exception as e:
             logger.error(f"decide_escalation() LLM error: {e}")
+
+    if intent in ESCALATE_INTENTS:
+        return "ESCALATE", f"Sensitive {intent} query requires human verification of credentials/billing."
 
     # ── Default: low-stakes → AUTO ─────────────────────────────────────────────
     return "AUTO", f"Standard {intent} query — can be handled by automated response."
