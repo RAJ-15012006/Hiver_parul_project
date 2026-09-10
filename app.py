@@ -59,6 +59,7 @@ st.markdown("""
         padding: 16px;
         margin-bottom: 12px;
         font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+        color: #0F1419;
     }
     .auto-badge {
         background-color: #E8F5E9;
