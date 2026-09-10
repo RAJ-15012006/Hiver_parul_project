@@ -11,14 +11,14 @@ build/
 .env
 *.env
 
-# Data files (large; not pushed to git)
+# Data files
 dataset/
-data/faiss_index.bin
-data/faiss_meta.pkl
 
-# Keep these generated files
+# Keep all prepared data and index files (under GitHub's 100MB limit)
 !data/golden_eval.csv
 !data/conversations.csv
+!data/faiss_index.bin
+!data/faiss_meta.pkl
 
 # Jupyter
 .ipynb_checkpoints/
