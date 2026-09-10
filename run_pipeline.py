@@ -86,16 +86,11 @@ def step3_golden(force: bool = False, use_llm: bool = True) -> None:
     logger.info(f"[Step 3] Done in {time.time()-t0:.1f}s")
 
 
-def step4_evaluate(use_llm: bool = True, judge_sample: int = 50) -> None:
+def step4_evaluate(use_llm: bool = True, judge_sample: int = 8) -> None:
     logger.info("[Step 4] Running evaluation harness …")
     t0 = time.time()
-    from evaluate import run_evaluation
-    report = run_evaluation(
-        golden_csv=GOLDEN_CSV,
-        use_llm=use_llm,
-        judge_sample=judge_sample,
-        run_baselines=True,
-    )
+    from run_eval import run_eval
+    report = run_eval()
     logger.info(f"[Step 4] Done in {time.time()-t0:.1f}s")
     return report
 
